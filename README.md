@@ -1,20 +1,98 @@
-Facing the Shellshock Vulnerability
+```pragma solidity 0.5.16;
 
-![image](https://user-images.githubusercontent.com/70282840/194763109-a8b937e9-2b71-4e69-8b8f-32c10f888af7.png)
+contract Election{
+    struct Candidate{
+        uint id;
+        string name;
+        uint voteCount;
+    }
 
-Since the things we added are strange when parsed to the command grep, it won't understand them.
-Now, what if we add some stuff after the function?
+    mapping(address => bool) public voters;
+    mapping(uint => Candidate) public candidates;
+    uint public candidatesCount;
+    uint256 public deadline;
 
-![image](https://user-images.githubusercontent.com/70282840/194763129-912f247f-90e6-4620-ab21-597cf55faa09.png)
+    event votedEvent (
+        uint indexed _candidateId
+    );
 
-Did you notice that echo NOOOOOOOOOOOOOOO! was executed normally? This is the Shellshock bug!
+    constructor (uint256 _deadline) public {
+        deadline=_deadline;
+        addCandidate("Candidate 1");
+        addCandidate("Candidate 2");
+    }
 
-This works because when the new shell sees an environment variable beginning with (), it gets the variable name and executes the following string. This includes executing anything after the function, i.e, the evaluation does not stop when the end of the function definition is reached!
+    function addCandidate (string memory _name) private {
+        candidatesCount ++;
+        candidates[candidatesCount] = Candidate(candidatesCount, _name, 0);
+    }
 
-Remember that echo is not the only thing we can do
+    function vote (uint _candidateId) public {
+        require(now<deadline);
+        require(!voters[msg.sender]);
 
-![image](https://user-images.githubusercontent.com/70282840/194763159-5aeedf95-db9c-4f5c-b154-8631fd5db662.png)
+        require(_candidateId > 0 && _candidateId <= candidatesCount);
 
-we actually don't need to use a system environment variable nor even call a real command:
+        voters[msg.sender] = true;
 
-![image](https://user-images.githubusercontent.com/70282840/194763180-31ab5980-7a26-4614-9c98-6dd1af242e93.png)
+        candidates[_candidateId].voteCount ++;
+
+        emit votedEvent(_candidateId);
+    }
+}
+
+
+
+pragma solidity ^0.8.11;
+
+contract Lottery {
+    address public owner;
+    address payable[] public players;
+    uint public lotteryId;
+    mapping (uint => address payable) public lotteryHistory;
+
+    constructor() {
+        owner = msg.sender;
+        lotteryId = 1;
+    }
+
+    function getWinnerByLottery(uint lottery) public view returns (address payable) {
+        return lotteryHistory[lottery];
+    }
+
+    function getBalance() public view returns (uint) {
+        return address(this).balance;
+    }
+
+    function getPlayers() public view returns (address payable[] memory) {
+        return players;
+    }
+
+    function enter() public payable {
+        require(msg.value > .01 ether);
+
+        // address of player entering lottery
+        players.push(payable(msg.sender));
+    }
+
+    function getRandomNumber() public view returns (uint) {
+        return uint(keccak256(abi.encodePacked(owner, block.timestamp)));
+    }
+
+    function pickWinner() public onlyowner {
+        uint index = getRandomNumber() % players.length;
+        players[index].transfer(address(this).balance);
+
+        lotteryHistory[lotteryId] = players[index];
+        lotteryId++;
+        
+
+        // reset the state of the contract
+        players = new address payable[](0);
+    }
+
+    modifier onlyowner() {
+      require(msg.sender == owner);
+      _;
+    }
+}
